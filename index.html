@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>바른등교AI - 복장 판별 체험</title>
+
+  <!-- 티처블 머신 공식 라이브러리 -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+  <!-- 폰트 -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Jua&display=swap" rel="stylesheet">
+
+  <style>
+    /* 동물의 숲 스타일 컬러 팔레트 */
+    :root {
+      --bg-color: #f4edd8;
+      --card-bg: #ffffff;
+      --primary: #7bb661;
+      --primary-hover: #639a4c;
+      --secondary: #f4c430;
+      --accent: #e76f51;
+      --text-main: #543d2b;
+      --text-sub: #7d6b5d;
+      --border-color: #e2d2b4;
+      --shadow: 0 8px 20px rgba(84, 61, 43, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Gowun Dodum', sans-serif;
+      background-color: var(--bg-color);
+      /* 동물의 숲 잔디 패턴 느낌의 은은한 도트 배경 */
+      background-image: 
+        radial-gradient(#e0d5be 18%, transparent 19%),
+        radial-gradient(#e0d5be 18%, transparent 19%);
+      background-size: 32px 32px;
+      background-position: 0 0, 16px 16px;
+      color: var(--text-main);
+      padding: 24px 16px 80px 16px;
+      line-height: 1.6;
+      position: relative;
+      min-height: 100vh;
+    }
+
+    /* 배경 일러스트 레이어 (본문 내용을 가리지 않도록 배경 뒤 배치) */
+    .bg-decorations {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: -1;
+      overflow: hidden;
+    }
+
+    /* 구름 애니메이션 */
+    .cloud {
+      position: absolute;
+      fill: #ffffff;
+      opacity: 0.85;
+      animation: floatCloud 25s linear infinite;
+    }
+
+    .cloud-1 { top: 5%; left: -100px; transform: scale(0.8); animation-duration: 35s; }
+    .cloud-2 { top: 15%; left: -120px; transform: scale(1.1); animation-duration: 28s; animation-delay: 10s; }
+
+    @keyframes floatCloud {
+      0% { left: -150px; }
+      100% { left: 105vw; }
+    }
+
+    /* 화면 양옆 귀여운 동물의 숲 나무 */
+    .tree-left {
+      position: absolute;
+      bottom: -10px;
+      left: 2%;
+      width: 120px;
+    }
+
+    .tree-right {
+      position: absolute;
+      bottom: -10px;
+      right: 2%;
+      width: 120px;
+    }
+
+    /* 모바일에서는 배경 나무 크기를 줄여 깔끔하게 유지 */
+    @media (max-width: 900px) {
+      .tree-left, .tree-right {
+        width: 70px;
+        opacity: 0.6;
+      }
+    }
+
+    .container {
+      max-width: 768px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border-radius: 28px;
+      padding: 24px;
+      border: 3px solid var(--border-color);
+      box-shadow: var(--shadow);
+    }
+
+    h1, h2, h3 {
+      font-family: 'Jua', sans-serif;
+      color: var(--text-main);
+      word-break: keep-all;
+    }
+
+    header.card {
+      text-align: center;
+      background-color: #fffdf6;
+      border-color: #d2c0a0;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* 헤더 학교 일러스트 로고 */
+    .school-icon-wrapper {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 8px;
+    }
+
+    .school-icon {
+      width: 64px;
+      height: 64px;
+    }
+
+    .title-badge {
+      display: inline-block;
+      background-color: var(--secondary);
+      color: var(--text-main);
+      font-family: 'Jua', sans-serif;
+      padding: 4px 16px;
+      border-radius: 20px;
+      font-size: 0.95rem;
+      margin-bottom: 8px;
+    }
+
+    header h1 {
+      font-size: 2.2rem;
+      color: var(--primary-hover);
+      margin-bottom: 6px;
+    }
+
+    header p {
+      color: var(--text-sub);
+      font-size: 1.05rem;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    @media (max-width: 600px) {
+      .info-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .info-box {
+      background-color: #faf6ed;
+      border: 2px dashed var(--border-color);
+      border-radius: 20px;
+      padding: 16px;
+    }
+
+    .info-box h3 {
+      font-size: 1.1rem;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .info-box p {
+      font-size: 0.95rem;
+      color: var(--text-sub);
+      word-break: keep-all;
+    }
+
+    .interactive-card {
+      border: 3px solid var(--primary);
+    }
+
+    .interactive-card h2 {
+      text-align: center;
+      font-size: 1.6rem;
+      color: var(--primary-hover);
+      margin-bottom: 16px;
+    }
+
+    .mode-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      background-color: #faf6ed;
+      padding: 6px;
+      border-radius: 20px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 16px;
+      font-family: 'Jua', sans-serif;
+      font-size: 1.05rem;
+      cursor: pointer;
+      background-color: transparent;
+      color: var(--text-sub);
+      transition: all 0.2s ease;
+    }
+
+    .tab-btn.active {
+      background-color: var(--primary);
+      color: white;
+      box-shadow: 0 4px 10px rgba(123, 182, 97, 0.3);
+    }
+
+    .control-panel {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .btn {
+      font-family: 'Jua', sans-serif;
+      font-size: 1.1rem;
+      padding: 12px 28px;
+      border: none;
+      border-radius: 24px;
+      cursor: pointer;
+      transition: transform 0.1s ease, background-color 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn:active {
+      transform: scale(0.96);
+    }
+
+    .btn-primary {
+      background-color: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background-color: var(--primary-hover);
+    }
+
+    .btn-danger {
+      background-color: var(--accent);
+      color: white;
+    }
+
+    .file-input-wrapper {
+      display: inline-block;
+      position: relative;
+    }
+
+    .file-input-wrapper input[type="file"] {
+      position: absolute;
+      left: 0;
+      top: 0;
+      opacity: 0;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+
+    .display-area {
+      width: 100%;
+      max-width: 320px;
+      height: 320px;
+      margin: 0 auto 20px auto;
+      border-radius: 24px;
+      background-color: #faf6ed;
+      border: 3px dashed var(--border-color);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .display-area canvas, .display-area img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 20px;
+    }
+
+    .placeholder-text {
+      color: var(--text-sub);
+      font-size: 0.95rem;
+      text-align: center;
+      padding: 16px;
+    }
+
+    .status-msg {
+      text-align: center;
+      font-weight: bold;
+      margin-bottom: 16px;
+      color: var(--primary-hover);
+      min-height: 24px;
+    }
+
+    .error-msg {
+      background-color: #fde8e8;
+      color: #c53030;
+      padding: 12px 16px;
+      border-radius: 16px;
+      border: 1px solid #f8b4b4;
+      font-size: 0.9rem;
+      margin-bottom: 16px;
+      display: none;
+      word-break: keep-all;
+    }
+
+    .results-container {
+      background-color: #faf6ed;
+      border-radius: 20px;
+      padding: 20px;
+      border: 2px solid var(--border-color);
+    }
+
+    .top-prediction {
+      text-align: center;
+      padding: 12px;
+      background-color: white;
+      border-radius: 16px;
+      margin-bottom: 16px;
+      border: 2px solid var(--secondary);
+    }
+
+    .top-prediction-title {
+      font-size: 0.9rem;
+      color: var(--text-sub);
+      margin-bottom: 4px;
+    }
+
+    .top-prediction-value {
+      font-family: 'Jua', sans-serif;
+      font-size: 1.8rem;
+      color: var(--accent);
+    }
+
+    .label-bar-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .label-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .label-info {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.95rem;
+      font-weight: bold;
+    }
+
+    .progress-bg {
+      height: 18px;
+      background-color: #e6dfcc;
+      border-radius: 10px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background-color: var(--primary);
+      width: 0%;
+      border-radius: 10px;
+      transition: width 0.2s ease;
+    }
+
+    .notice-box {
+      background-color: #fff8e7;
+      border-left: 6px solid var(--secondary);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-top: 16px;
+      font-size: 0.9rem;
+      color: var(--text-main);
+    }
+
+    footer.card {
+      text-align: center;
+      background-color: #faf6ed;
+      padding: 16px;
+    }
+
+    footer p {
+      font-size: 0.9rem;
+      color: var(--text-sub);
+    }
+
+    .class-badges {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+
+    .class-badge {
+      background-color: white;
+      border: 1.5px solid var(--primary);
+      color: var(--primary-hover);
+      padding: 4px 12px;
+      border-radius: 14px;
+      font-size: 0.9rem;
+      font-family: 'Jua', sans-serif;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 배경 일러스트 (구름 & 동물의 숲 나무) -->
+  <div class="bg-decorations">
+    <!-- 떠다니는 구름 -->
+    <svg class="cloud cloud-1" width="100" height="40" viewBox="0 0 100 40">
+      <path d="M 10 30 Q 0 30 0 20 Q 0 10 15 10 Q 25 0 45 5 Q 60 -5 75 10 Q 90 5 95 20 Q 100 30 85 30 Z" />
+    </svg>
+    <svg class="cloud cloud-2" width="120" height="48" viewBox="0 0 100 40">
+      <path d="M 10 30 Q 0 30 0 20 Q 0 10 15 10 Q 25 0 45 5 Q 60 -5 75 10 Q 90 5 95 20 Q 100 30 85 30 Z" />
+    </svg>
+
+    <!-- 왼쪽 나무 (동물의 숲 삼각 동글 나무 스타일) -->
+    <svg class="tree-left" viewBox="0 0 100 140">
+      <rect x="42" y="90" width="16" height="45" rx="5" fill="#8d5b36"/>
+      <circle cx="50" cy="50" r="42" fill="#7bb661"/>
+      <circle cx="32" cy="40" r="22" fill="#88c46e"/>
+      <circle cx="65" cy="45" r="20" fill="#6ba852"/>
+      <circle cx="50" cy="25" r="18" fill="#9cd982"/>
+    </svg>
+
+    <!-- 오른쪽 나무 -->
+    <svg class="tree-right" viewBox="0 0 100 140">
+      <rect x="42" y="90" width="16" height="45" rx="5" fill="#8d5b36"/>
+      <circle cx="50" cy="50" r="42" fill="#6ba852"/>
+      <circle cx="35" cy="45" r="20" fill="#7bb661"/>
+      <circle cx="68" cy="40" r="22" fill="#88c46e"/>
+      <circle cx="50" cy="25" r="18" fill="#9cd982"/>
+    </svg>
+  </div>
+
+  <div class="container">
+
+    <header class="card">
+      <!-- 아기자기한 학교 건물 일러스트 -->
+      <div class="school-icon-wrapper">
+        <svg class="school-icon" viewBox="0 0 100 100">
+          <!-- 기둥 및 파스텔 건물 -->
+          <rect x="15" y="40" width="70" height="50" rx="8" fill="#fceade" stroke="#d4ab90" stroke-width="3"/>
+          <!-- 지붕 -->
+          <polygon points="10,42 50,15 90,42" fill="#e76f51" stroke="#c05236" stroke-width="3" stroke-linejoin="round"/>
+          <!-- 시계/창문 -->
+          <circle cx="50" cy="32" r="7" fill="#ffffff" stroke="#f4c430" stroke-width="2"/>
+          <rect x="25" y="52" width="14" height="18" rx="3" fill="#87ceeb"/>
+          <rect x="61" y="52" width="14" height="18" rx="3" fill="#87ceeb"/>
+          <!-- 문 -->
+          <rect x="42" y="62" width="16" height="28" rx="4" fill="#a06a48"/>
+          <!-- 시계 바늘 -->
+          <line x1="50" y1="32" x2="50" y2="28" stroke="#543d2b" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="50" y1="32" x2="53" y2="32" stroke="#543d2b" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+
+      <span class="title-badge">🍃 교내 생활지도 AI Project</span>
+      <h1>바른등교AI</h1>
+      <p>인공지능 카메라로 등교 복장을 올바르게 판별하도록 돕는 웹 서비스입니다.</p>
+    </header>
+
+    <section class="card">
+      <div class="info-grid">
+        <div class="info-box">
+          <h3>🎯 해결하려는 문제</h3>
+          <p>교칙으로 정해진 복장 이외의 불량한 복장으로 등교하는 학생들을 색출하여 벌점을 부과하기 위해 제작되었습니다.</p>
+        </div>
+        <div class="info-box">
+          <h3>👥 주요 사용자</h3>
+          <p>등교 지도 업무를 담당하는 학생회 관련자 또는 학생자치부 선생님들입니다.</p>
+        </div>
+      </div>
+
+      <div class="info-box" style="margin-top: 12px;">
+        <h3>🏷️ AI 분류 기준 (실제 클래스)</h3>
+        <p>티처블 머신 모델에 학습된 기준에 따라 아래 클래스로 판별합니다.</p>
+        <div class="class-badges" id="class-badges-container">
+          <span class="class-badge">불러오는 중...</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card interactive-card">
+      <h2>🔍 AI 복장 판별 체험하기</h2>
+
+      <div class="error-msg" id="error-box"></div>
+      <div class="status-msg" id="status-msg">체험할 입력 방식을 선택해 주세요.</div>
+
+      <div class="mode-tabs">
+        <button class="tab-btn active" id="tab-camera-btn" onclick="switchMode('camera')">📷 실시간 카메라</button>
+        <button class="tab-btn" id="tab-file-btn" onclick="switchMode('file')">🖼️ 사진 업로드</button>
+      </div>
+
+      <div class="control-panel">
+        <div id="camera-controls">
+          <button class="btn btn-primary" id="webcam-start-btn" onclick="startWebcam()">카메라 시작하기</button>
+          <button class="btn btn-danger" id="webcam-stop-btn" onclick="stopWebcam()" style="display: none;">카메라 중지</button>
+        </div>
+
+        <div id="file-controls" style="display: none;">
+          <div class="file-input-wrapper">
+            <button class="btn btn-primary">사진 선택하기</button>
+            <input type="file" id="image-upload" accept="image/*" onchange="handleImageUpload(event)">
+          </div>
+        </div>
+      </div>
+
+      <div class="display-area" id="display-area">
+        <div class="placeholder-text" id="placeholder-text">
+          시작 버튼을 누르거나<br>사진을 올려주세요!
+        </div>
+      </div>
+
+      <div class="results-container">
+        <div class="top-prediction">
+          <div class="top-prediction-title">가장 높은 확률의 예측 결과</div>
+          <div class="top-prediction-value" id="top-result-text">-</div>
+        </div>
+
+        <div class="label-bar-group" id="label-container">
+          <p style="text-align: center; color: var(--text-sub); font-size: 0.9rem;">모델이 로드되면 예측 확률이 여기에 나타납니다.</p>
+        </div>
+      </div>
+
+      <div class="notice-box">
+        <strong>💡 사람이 다시 확인해야 하는 이유</strong><br>
+        인공지능의 예측 결과는 절대적인 정답이 아닙니다! 조명, 카메라 각도, 계절별 복장 변형에 따라 오분류가 발생할 수 있으므로, 최종 벌점 부과 및 생활지도는 반드시 지도 선생님이나 학생회 담당자가 직접 확인해야 합니다.
+      </div>
+    </section>
+
+    <footer class="card">
+      <p><strong>제작 팀원:</strong> 21004 김세빈 | 21005 김예솔 | 21006 김현주</p>
+    </footer>
+
+  </div>
+
+  <script>
+    const MODEL_URL = "https://teachablemachine.withgoogle.com/models/5BoSobycN/";
+
+    let model = null;
+    let webcam = null;
+    let isWebcamRunning = false;
+    let animationFrameId = null;
+    let currentMode = 'camera';
+    let currentObjectUrl = null;
+
+    const statusMsg = document.getElementById('status-msg');
+    const errorBox = document.getElementById('error-box');
+    const displayArea = document.getElementById('display-area');
+    const labelContainer = document.getElementById('label-container');
+    const topResultText = document.getElementById('top-result-text');
+    const classBadgesContainer = document.getElementById('class-badges-container');
+
+    const webcamStartBtn = document.getElementById('webcam-start-btn');
+    const webcamStopBtn = document.getElementById('webcam-stop-btn');
+    const cameraControls = document.getElementById('camera-controls');
+    const fileControls = document.getElementById('file-controls');
+    const tabCameraBtn = document.getElementById('tab-camera-btn');
+    const tabFileBtn = document.getElementById('tab-file-btn');
+
+    function showError(message) {
+      errorBox.innerText = message;
+      errorBox.style.display = 'block';
+    }
+
+    function clearError() {
+      errorBox.innerText = '';
+      errorBox.style.display = 'none';
+    }
+
+    async function loadModel() {
+      if (model) return true;
+
+      try {
+        clearError();
+        statusMsg.innerText = "⏳ 티처블 머신 모델을 불러오는 중입니다...";
+        
+        const modelURL = MODEL_URL + "model.json";
+        const metadataURL = MODEL_URL + "metadata.json";
+
+        model = await tmImage.load(modelURL, metadataURL);
+        
+        statusMsg.innerText = "✅ 모델을 성공적으로 불러왔습니다!";
+        renderClassBadges();
+        return true;
+      } catch (err) {
+        console.error("모델 로딩 오류:", err);
+        showError("⚠️ 모델을 불러오지 못했습니다. 네트워크 연결 상태나 모델 주소를 확인해 주세요.");
+        statusMsg.innerText = "❌ 모델 로딩 실패";
+        return false;
+      }
+    }
+
+    function renderClassBadges() {
+      if (!model) return;
+      const classLabels = model.getClassLabels();
+      classBadgesContainer.innerHTML = '';
+      
+      classLabels.forEach(label => {
+        const badge = document.createElement('span');
+        badge.className = 'class-badge';
+        badge.innerText = label;
+        classBadgesContainer.appendChild(badge);
+      });
+    }
+
+    function switchMode(mode) {
+      currentMode = mode;
+      clearError();
+
+      if (mode === 'camera') {
+        tabCameraBtn.classList.add('active');
+        tabFileBtn.classList.remove('active');
+        cameraControls.style.display = 'block';
+        fileControls.style.display = 'none';
+        
+        clearUploadedImage();
+        statusMsg.innerText = "카메라 시작 버튼을 눌러 실시간 검사를 진행하세요.";
+      } else {
+        tabFileBtn.classList.add('active');
+        tabCameraBtn.classList.remove('active');
+        fileControls.style.display = 'block';
+        cameraControls.style.display = 'none';
+
+        stopWebcam();
+        statusMsg.innerText = "검사할 사진 파일을 올리고 결과를 확인하세요.";
+      }
+    }
+
+    async function startWebcam() {
+      if (isWebcamRunning) return;
+
+      const isLoaded = await loadModel();
+      if (!isLoaded) return;
+
+      try {
+        clearError();
+        statusMsg.innerText = "📷 카메라 권한을 요청하고 준비하는 중입니다...";
+        webcamStartBtn.disabled = true;
+
+        const flip = true;
+        webcam = new tmImage.Webcam(300, 300, flip);
+        await webcam.setup();
+        await webcam.play();
+
+        isWebcamRunning = true;
+        
+        displayArea.innerHTML = '';
+        displayArea.appendChild(webcam.canvas);
+
+        webcamStartBtn.style.display = 'none';
+        webcamStopBtn.style.display = 'inline-flex';
+        webcamStartBtn.disabled = false;
+        
+        statusMsg.innerText = "🔴 실시간 복장 판별 중입니다.";
+
+        window.requestAnimationFrame(webcamLoop);
+
+      } catch (err) {
+        console.error("카메라 접근 오류:", err);
+        webcamStartBtn.disabled = false;
+        showError("⚠️ 카메라에 접근할 수 없습니다. 권한을 허용했는지 확인해 주세요.");
+        statusMsg.innerText = "❌ 카메라 실행 실패";
+      }
+    }
+
+    async function webcamLoop() {
+      if (!isWebcamRunning) return;
+
+      webcam.update();
+      await predict(webcam.canvas);
+      animationFrameId = window.requestAnimationFrame(webcamLoop);
+    }
+
+    function stopWebcam() {
+      if (animationFrameId) {
+        window.cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
+
+      if (webcam) {
+        webcam.stop();
+        webcam = null;
+      }
+
+      isWebcamRunning = false;
+      webcamStartBtn.style.display = 'inline-flex';
+      webcamStopBtn.style.display = 'none';
+
+      if (currentMode === 'camera') {
+        displayArea.innerHTML = '<div class="placeholder-text" id="placeholder-text">시작 버튼을 누르거나<br>사진을 올려주세요!</div>';
+        statusMsg.innerText = "카메라가 중지되었습니다.";
+      }
+    }
+
+    async function handleImageUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      if (!file.type.startsWith('image/')) {
+        showError("⚠️ 이미지 파일(jpg, png 등)만 올릴 수 있습니다.");
+        return;
+      }
+
+      const isLoaded = await loadModel();
+      if (!isLoaded) return;
+
+      clearError();
+      statusMsg.innerText = "🖼️ 이미지를 분석하는 중입니다...";
+
+      if (currentObjectUrl) {
+        URL.revokeObjectURL(currentObjectUrl);
+      }
+
+      currentObjectUrl = URL.createObjectURL(file);
+      
+      const imgElement = document.createElement('img');
+      imgElement.src = currentObjectUrl;
+
+      imgElement.onload = async () => {
+        displayArea.innerHTML = '';
+        displayArea.appendChild(imgElement);
+        await predict(imgElement);
+        statusMsg.innerText = "✅ 이미지 분석 완료!";
+      };
+
+      imgElement.onerror = () => {
+        showError("⚠️ 올바르지 않거나 읽을 수 없는 이미지 파일입니다.");
+        statusMsg.innerText = "❌ 이미지 로드 실패";
+      };
+    }
+
+    function clearUploadedImage() {
+      if (currentObjectUrl) {
+        URL.revokeObjectURL(currentObjectUrl);
+        currentObjectUrl = null;
+      }
+      const fileInput = document.getElementById('image-upload');
+      if (fileInput) fileInput.value = '';
+    }
+
+    async function predict(imageSource) {
+      if (!model) return;
+
+      try {
+        const prediction = await model.predict(imageSource);
+        renderPredictions(prediction);
+      } catch (err) {
+        console.error("예측 오류:", err);
+        showError("⚠️ 분석 처리 중 오류가 발생했습니다.");
+      }
+    }
+
+    function renderPredictions(predictions) {
+      labelContainer.innerHTML = '';
+
+      let highestPrediction = predictions[0];
+
+      predictions.forEach(pred => {
+        if (pred.probability > highestPrediction.probability) {
+          highestPrediction = pred;
+        }
+
+        const percentage = (pred.probability * 100).toFixed(1);
+
+        const row = document.createElement('div');
+        row.className = 'label-row';
+
+        row.innerHTML = `
+          <div class="label-info">
+            <span>${pred.className}</span>
+            <span>${percentage}%</span>
+          </div>
+          <div class="progress-bg">
+            <div class="progress-fill" style="width: ${percentage}%;"></div>
+          </div>
+        `;
+
+        labelContainer.appendChild(row);
+      });
+
+      topResultText.innerText = `${highestPrediction.className} (${(highestPrediction.probability * 100).toFixed(1)}%)`;
+    }
+  </script>
+</body>
+</html>
